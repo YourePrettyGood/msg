@@ -14,7 +14,9 @@
 ##0.3.0 Dan: use CommandLineApp class with ability to take all input parameters on command line
 ##0.3.1 PFR: Added support for BWA-MEM mapping
 ##0.3.2 PFR: Removed some useless lines and added mapping parallelization
-__version__ = '0.3.2'
+##0.3.3 PFR: Output BAM immediately, never store SAM (save disk space)
+##           Also moved max_mapped_reads filter into here to pipe it all together
+__version__ = '0.3.3'
 
 import subprocess
 import sys, os
@@ -101,6 +103,9 @@ class ParseAndMap(CommandLineApp):
 
         op.add_option('-S', '--samtools_path', dest='samtools_path', default='samtools', type='string', 
                       help='Path to samtools 0.1.9 including the name of the binary at the end of the string')
+        #An extra filter that used to be applied in parent1or2-hmm.sh until 0.3.3:
+        op.add_option('--max_mapped_reads', dest='max_mapped_reads', default=0, type='int',
+                      help='Maximum number of alignments to keep for each individual. Default=0 for no maximum')
 
         #Set divergence for mapping to a foreign reference (note: this is
         #strongly recommended for divergences >3%, as it will automatically
@@ -202,7 +207,8 @@ class ParseAndMap(CommandLineApp):
             self.map()
             if self.options.bwa_alg == 'aln':
                 #bwasw, stampy, and mem don't make sai files
-                self.delete_files()
+                #Skip this as of 0.3.3, since we pipe and don't make .sai files
+                #self.delete_files()
 
     def parse_all(self):
         """Main parsing function"""
@@ -458,15 +464,16 @@ class ParseAndMap(CommandLineApp):
         print "create ln with .fq extension:", sym_link_args
         subprocess.check_call([sym_link_args], shell=True)
 
-    def _map_w_stampy(self, fastq_file, parent1, parent2, aln_par1_sam, aln_par2_sam, file_par1_log,
+    def _map_w_stampy(self, fastq_file, parent1, parent2, par1_bam, par2_bam, file_par1_log,
         file_par2_log, misc_indiv_log):
+        #TODO: Adjust all Stampy stuff to generate/operate on BAMs, not SAMs
 
         #TEMP: stampy requires .fq extension on our files.  Remove this if stampy fixes it.
         # I'm temporarily creating symlinks in the parse step. (doesn't apply to gz files)
         if not fastq_file.lower().endswith('.gz'):
             fastq_file += '.fq'
 
-        #Align each to sim - output fastq file
+        #Align each to sim (par1) - output SAM file
         if self.options.stampy_premap_w_bwa == 1:
             args = ['stampy.py', '-v3', '--inputformat=fastq', '--substitutionrate={}'.format(self.options.stampy_substitution_rate),
                 '--bwaoptions="-q10 {}"'.format(parent1), '-g',
@@ -483,7 +490,7 @@ class ParseAndMap(CommandLineApp):
         file_par1_sam = subprocess.Popen([' '.join(args)],
             stderr=file_par1_log, shell=True)
 
-        #Align each to sec - output fastq file
+        #Align each to sec (par2) - output SAM file
         if self.options.stampy_premap_w_bwa == 1:
             args = ['stampy.py', '-v3', '--inputformat=fastq', '--substitutionrate={}'.format(self.options.stampy_substitution_rate),
                 '--bwaoptions="-q10 {}"'.format(parent2), '-g',
@@ -513,6 +520,7 @@ class ParseAndMap(CommandLineApp):
             #convert to bam to prepare for sorting
             subprocess.check_call(['{} view -btSh -o {}.bam {}'.format(self.options.samtools_path, file_to_fix, file_to_fix)],
                 shell=True, stdout=misc_indiv_log, stderr=misc_indiv_log)
+            #PFR Note: Sorting introduces a bug during SAM truncation
             #Do the sort (samtools adds .bam suffix to output FYI)
             subprocess.check_call(['{} sort -n {}.bam {}.sorted'.format(self.options.samtools_path, file_to_fix, file_to_fix)],
                 shell=True, stdout=misc_indiv_log, stderr=misc_indiv_log)
@@ -556,113 +564,405 @@ class ParseAndMap(CommandLineApp):
                 fastq_file += '.gz'
                 assert os.path.exists(fastq_file),"File {} could not be found.  Something has gone wrong.".format(fastq_file)
 
-            #Change format for sim - output sam file
-            aln_par1_sam = './{}_sam_files/aln_{}_{}.sam'.format(raw_data, fastq_file_name, par1)
-            #Change format for sec - output sam file
-            aln_par2_sam = './{}_sam_files/aln_{}_{}.sam'.format(raw_data, fastq_file_name, par2)
+            #Change format for sim - output BAM file
+            par1_bam = './{}_sam_files/aln_{}_par1.bam'.format(raw_data, fastq_file_name)
+            #Change format for sec - output BAM file
+            par2_bam = './{}_sam_files/aln_{}_par2.bam'.format(raw_data, fastq_file_name)
 
-            if ((os.path.exists(aln_par1_sam) or os.path.exists(aln_par1_sam+'.gz')) and
-                (os.path.exists(aln_par2_sam) or os.path.exists(aln_par2_sam+'.gz'))): 
-                print bcolors.WARN + 'Refusing to map reads for {}. Files already exist.'.format(fastq_file_name) + bcolors.ENDC
+            if (os.path.exists(par1_bam) and os.path.exists(par2_bam)): 
+                print bcolors.WARN + 'Refusing to map reads for {}. BAMs already exist.'.format(fastq_file_name) + bcolors.ENDC
                 continue
 
-            file_par1_log = open(os.path.join(self.logdir, fastq_file_name + par1 + '.log'), "w")
-            file_par2_log = open(os.path.join(self.logdir, fastq_file_name + par2 + '.log'), "w")
-            misc_indiv_log = open(os.path.join(self.logdir, fastq_file_name + '.misc.log'), "w")
+            #TODO: Eliminate these variables since we make the logs later
+            #Currently still needed for Stampy
+#            file_par1_log = open(os.path.join(self.logdir, fastq_file_name + par1 + '.log'), "w")
+#            file_par2_log = open(os.path.join(self.logdir, fastq_file_name + par2 + '.log'), "w")
+#            misc_indiv_log = open(os.path.join(self.logdir, fastq_file_name + '.misc.log'), "w")
 
+            #TODO: Refactor the mapping code into per-algorithm functions
+            # so that this section is a lot cleaner
+            #TODO: Check if Stampy (reasonably new versions) require calmd
             if self.options.use_stampy == 1:
-                self._map_w_stampy(fastq_file, parent1, parent2, aln_par1_sam, aln_par2_sam, file_par1_log,
-                    file_par2_log, misc_indiv_log)
+                #PFR revisions to pipe everything together and make BAM:
+                #For Stampy, the 1.0.20 README states that gzipped FASTQ
+                # is fine, and that running BWA separately is preferred,
+                # so PFR updates are skipping some tidbits in the old MSG code.
+                #But we retain the old function just in case we need to revert:
+#                self._map_w_stampy(fastq_file, parent1, parent2, aln_par1_sam, aln_par2_sam, file_par1_log,
+#                    file_par2_log, misc_indiv_log)
+                #Revised Stampy execution:
+                #Align to par1 ("sim"):
+                stampy_par1_stderr = './{}/stampy_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                tobam_par1.stderr = './{}/samtoolsViewToBAM_stampy_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                if self.options.stampy_premap_w_bwa == 1:
+                   par1_premap_bam = './{}_sam_files/stampy_premap_{}_par1.bam'.format(raw_data, fastq_file_name)
+                   aln_par1_stderr = './{}/aln_stampy_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                   samse_par1_stderr = './{}/samse_stampy_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                   tobam_premap_par1_stderr = './{}/samtoolsViewToBAM_aln_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                   aln_par1 = subprocess.Popen(['bwa', 'aln',
+                      '-q10',
+                      '-t', self.options.bwa_threads, parent1, fastq_file],
+                      stdout=subprocess.PIPE, stderr=open(aln_par1_stderr, 'w'))
+                   samse_par1 = subprocess.Popen(['bwa', 'samse', parent1, '-', fastq_file],
+                      stdin=aln_par1.stdout, stdout=subprocess.PIPE,
+                      stderr=open(samse_par1_stderr, 'w'))
+                   tobam_premap_par1 = subprocess.Popen([self.options.samtools_path, 'view',
+                      '-bhS', '-o', par1_premap_bam],
+                      stdin=samse_par1.stdout, stderr=open(tobam_premap_par1_stderr, 'w'))
+                   #Make sure that SIGPIPE is properly handled:
+                   aln_par1.stdout.close()
+                   samse_par1.stdout.close()
+                   #Collect the exit codes:
+                   #TODO: Adapt this to parallel mapping
+                   par1_premap_exit_codes = [aln_par1.wait(), samse_par1.wait(), tobam_premap_par1.wait()]
+                #Run Stampy (either with the BWA aln BAM, or the orig reads):
+                if self.options.stampy_premap_w_bwa == 1:
+                   #Now run Stampy using this BAM:
+                   stampy_par1 = subprocess.Popen(['stampy.py',
+                      '-g', '{}.stampy.msg'.format(parent1),
+                      '-h', '{}.stampy.msg'.format(parent1),
+                      '--noparseNCBI',
+                      '--substitutionrate={}'.format(self.options.stampy_substitution_rate),
+                      '--bamkeepgoodreads', par1_premap_bam],
+                      stderr=open(stampy_par1_stderr, 'w'),
+                      stdout=subprocess.PIPE)
+                else:
+                   #Run Stampy using the original FASTQ:
+                   stampy_par1 = subprocess.Popen(['stampy.py',
+                      '-g', '{}.stampy.msg'.format(parent1),
+                      '-h', '{}.stampy.msg'.format(parent1),
+                      '--noparseNCBI',
+                      '--substitutionrate={}'.format(self.options.stampy_substitution_rate),
+                      '-M', fastq_file],
+                      stderr=open(stampy_par1_stderr, 'w'),
+                      stdout=subprocess.PIPE)
+                if self.options.max_mapped_reads > 0:
+                   truncate_par1 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                      '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
+                      stdin=stampy_par1.stdout, stdout=subprocess.PIPE)
+                   tobam_stdin = truncate_par1.stdout
+                else:
+                   tobam_stdin = stampy_par1.stdout
+                tobam_par1 = subprocess.Popen([self.options.samtools_path, 'view',
+                   '-bhS', '-q', self.options.mapq_filter, '-o', par1_bam],
+                   stdin=tobam_stdin, stderr=open(tobam_stampy_par1_stderr, 'w'))
+                #Make sure that SIGPIPE is properly handled:
+                stampy_par1.stdout.close()
+                if self.options.max_mapped_reads > 0:
+                   truncate_par1.stdout.close()
+                #Collect the exit codes:
+                #TODO: Adapt this to parallel mapping
+                if self.options.max_mapped_reads > 0:
+                   par1_exit_codes = [stampy_par1.wait(), truncate_par1.wait(), tobam_par1.wait()]
+                else:
+                   par1_exit_codes = [stampy_par1.wait(), tobam_par1.wait()]
+
+                #Align to par2 ("sec"):
+                stampy_par2_stderr = './{}/stampy_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                tobam_par2.stderr = './{}/samtoolsViewToBAM_stampy_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                if self.options.stampy_premap_w_bwa == 1:
+                   par2_premap_bam = './{}_sam_files/stampy_premap_{}_par2.bam'.format(raw_data, fastq_file_name)
+                   aln_par2_stderr = './{}/aln_stampy_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                   samse_par2_stderr = './{}/samse_stampy_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                   tobam_premap_par2_stderr = './{}/samtoolsViewToBAM_aln_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                   aln_par2 = subprocess.Popen(['bwa', 'aln',
+                      '-q10',
+                      '-t', self.options.bwa_threads, parent2, fastq_file],
+                      stdout=subprocess.PIPE, stderr=open(aln_par2_stderr, 'w'))
+                   samse_par2 = subprocess.Popen(['bwa', 'samse', parent2, '-', fastq_file],
+                      stdin=aln_par2.stdout, stdout=subprocess.PIPE,
+                      stderr=open(samse_par2_stderr, 'w'))
+                   tobam_premap_par2 = subprocess.Popen([self.options.samtools_path, 'view',
+                      '-bhS', '-o', par2_premap_bam],
+                      stdin=samse_par2.stdout, stderr=open(tobam_premap_par2_stderr, 'w'))
+                   #Make sure that SIGPIPE is properly handled:
+                   aln_par2.stdout.close()
+                   samse_par2.stdout.close()
+                   #Collect the exit codes:
+                   #TODO: Adapt this to parallel mapping
+                   par2_premap_exit_codes = [aln_par2.wait(), samse_par2.wait(), tobam_premap_par2.wait()]
+                #Run Stampy (either with the BWA aln BAM, or the orig reads):
+                if self.options.stampy_premap_w_bwa == 1:
+                   #Now run Stampy using this BAM:
+                   stampy_par2 = subprocess.Popen(['stampy.py',
+                      '-g', '{}.stampy.msg'.format(parent2),
+                      '-h', '{}.stampy.msg'.format(parent2),
+                      '--noparseNCBI',
+                      '--substitutionrate={}'.format(self.options.stampy_substitution_rate),
+                      '--bamkeepgoodreads', par2_premap_bam],
+                      stderr=open(stampy_par2_stderr, 'w'),
+                      stdout=subprocess.PIPE)
+                else:
+                   #Run Stampy using the original FASTQ:
+                   stampy_par2 = subprocess.Popen(['stampy.py',
+                      '-g', '{}.stampy.msg'.format(parent2),
+                      '-h', '{}.stampy.msg'.format(parent2),
+                      '--noparseNCBI',
+                      '--substitutionrate={}'.format(self.options.stampy_substitution_rate),
+                      '-M', fastq_file],
+                      stderr=open(stampy_par2_stderr, 'w'),
+                      stdout=subprocess.PIPE)
+                if self.options.max_mapped_reads > 0:
+                   truncate_par2 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                      '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
+                      stdin=stampy_par2.stdout, stdout=subprocess.PIPE)
+                   tobam_stdin = truncate_par2.stdout
+                else:
+                   tobam_stdin = stampy_par2.stdout
+                tobam_par2 = subprocess.Popen([self.options.samtools_path, 'view',
+                   '-bhS', '-q', self.options.mapq_filter, '-o', par2_bam],
+                   stdin=tobam_stdin, stderr=open(tobam_stampy_par2_stderr, 'w'))
+                #Make sure that SIGPIPE is properly handled:
+                stampy_par2.stdout.close()
+                if self.options.max_mapped_reads > 0:
+                   truncate_par2.stdout.close()
+                #Collect the exit codes:
+                #TODO: Adapt this to parallel mapping
+                if self.options.max_mapped_reads > 0:
+                   par2_exit_codes = [stampy_par2.wait(), truncate_par2.wait(), tobam_par2.wait()]
+                else:
+                   par2_exit_codes = [stampy_par2.wait(), tobam_par2.wait()]
 
             elif self.options.bwa_alg == 'aln':
-                #Align each to sim - output fastq file
-                aln_par1_sai =  './aln_' + fastq_file_name + "_" + par1 + ".sai"
-                file_par1_sai = open(aln_par1_sai,"w")
-                file_par1_sai = subprocess.Popen(['bwa', 'aln',
-                    '-t ' + str(self.options.bwa_threads), parent1, fastq_file],
-                    stdout=file_par1_sai, stderr=file_par1_log)
+                #PFR revisions to pipe everything together and make BAM:
+                #Align to par1 ("sim"):
+                aln_par1_stderr = './{}/aln_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                samse_par1_stderr = './{}/samse_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                tobam_par1_stderr = './{}/samtoolsViewToBAM_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                aln_par1 = subprocess.Popen(['bwa', 'aln',
+                   '-t', self.options.bwa_threads, parent1, fastq_file],
+                   stdout=subprocess.PIPE, stderr=open(aln_par1_stderr, 'w'))
+                samse_par1 = subprocess.Popen(['bwa', 'samse', parent1, '-', fastq_file],
+                   stdin=aln_par1.stdout, stdout=subprocess.PIPE,
+                   stderr=open(samse_par1_stderr, 'w'))
+                if self.options.max_mapped_reads > 0:
+                   truncate_par1 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                      '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
+                      stdin=samse_par1.stdout, stdout=subprocess.PIPE)
+                   tobam_stdin = truncate_par1.stdout
+                else:
+                   tobam_stdin = samse_par1.stdout
+                tobam_par1 = subprocess.Popen([self.options.samtools_path, 'view',
+                   '-bhS', '-q', self.options.mapq_filter, '-o', par1_bam],
+                   stdin=tobam_stdin, stderr=open(tobam_par1_stderr, 'w'))
+                #Make sure that SIGPIPE is properly handled:
+                aln_par1.stdout.close()
+                samse_par1.stdout.close()
+                if self.options.max_mapped_reads > 0:
+                   truncate_par1.stdout.close()
+                #Collect the exit codes:
+                #TODO: Adapt this to parallel mapping
+                if self.options.max_mapped_reads > 0:
+                   par1_exit_codes = [aln_par1.wait(), samse_par1.wait(), truncate_par1.wait(), tobam_par1.wait()]
+                else:
+                   par1_exit_codes = [aln_par1.wait(), samse_par1.wait(), tobam_par1.wait()]
 
-                #Align each to sec - output fastq file
-                aln_par2_sai =  './aln_' + fastq_file_name + "_" + par2 + ".sai"
-                file_par2_sai = open(aln_par2_sai,"w")
-                file_par2_sai = subprocess.Popen(['bwa', 'aln', '-t ' + str(self.options.bwa_threads), 
-                    parent2, fastq_file],
-                    stdout=file_par2_sai, stderr=file_par2_log)
-
-                #pause until these two processes are finished. If don't, then samse starts on empty or incomplete file
-                file_par1_sai.wait()
-                file_par2_sai.wait()
-
-                file_par1_sam = open(aln_par1_sam,'w')
-                file_par1_sam = subprocess.Popen(['bwa', "samse", parent1, aln_par1_sai, fastq_file],stdout=file_par1_sam)
-                file_par2_sam = open(aln_par2_sam,'w')
-                file_par2_sam = subprocess.Popen(['bwa', "samse", parent2, aln_par2_sai, fastq_file],stdout=file_par2_sam)
-
-                #pause until these two processes are finished. This is a precaution. Don't want to continue until sure sam files are completely written 
-                file_par1_sam.wait()
-                file_par2_sam.wait()
+                #Align to par2 ("sec"):
+                aln_par2_stderr = './{}/aln_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                samse_par2_stderr = './{}/samse_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                tobam_par2_stderr = './{}/samtoolsViewToBAM_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                aln_par2 = subprocess.Popen(['bwa', 'aln',
+                   '-t', self.options.bwa_threads, parent2, fastq_file],
+                   stdout=subprocess.PIPE, stderr=open(aln_par2_stderr, 'w'))
+                samse_par2 = subprocess.Popen(['bwa', 'samse', parent2, '-', fastq_file],
+                   stdin=aln_par2.stdout, stdout=subprocess.PIPE,
+                   stderr=open(samse_par2_stderr, 'w'))
+                if self.options.max_mapped_reads > 0:
+                   truncate_par2 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                      '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
+                      stdin=samse_par2.stdout, stdout=subprocess.PIPE)
+                   tobam_stdin = truncate_par2.stdout
+                else:
+                   tobam_stdin = samse_par2.stdout
+                tobam_par2 = subprocess.Popen([self.options.samtools_path, 'view',
+                   '-bhS', '-q', self.options.mapq_filter, '-o', par2_bam],
+                   stdin=tobam_stdin, stderr=open(tobam_par2_stderr, 'w'))
+                #Make sure that SIGPIPE is properly handled:
+                aln_par2.stdout.close()
+                samse_par2.stdout.close()
+                if self.options.max_mapped_reads > 0:
+                   truncate_par2.stdout.close()
+                #Collect the exit codes:
+                #TODO: Adapt this to parallel mapping
+                if self.options.max_mapped_reads > 0:
+                   par2_exit_codes = [aln_par2.wait(), samse_par2.wait(), truncate_par2.wait(), tobam_par2.wait()]
+                else:
+                   par2_exit_codes = [aln_par2.wait(), samse_par2.wait(), tobam_par2.wait()]
 
             elif self.options.bwa_alg == 'bwasw':
-                #Align each to sim - output fastq file
-                file_par1_sam = open(aln_par1_sam,'w')
-                file_par1_sam = subprocess.Popen(['bwa',
-                    'bwasw', '-t ' + str(self.options.bwa_threads), parent1, fastq_file],
-                    stdout=file_par1_sam, stderr=file_par1_log)
+                #PFR revisions to pipe everything together and make BAM:
+                #Align to par1 ("sim"):
+                bwasw_par1_stderr = './{}/bwasw_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                tobam_par1_stderr = './{}/samtoolsViewToBAM_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                bwasw_par1 = subprocess.Popen(['bwa', 'bwasw',
+                   '-t', self.options.bwa_threads, parent1, fastq_file],
+                   stdout=subprocess.PIPE, stderr=open(bwasw_par1_stderr, 'w'))
+                if self.options.max_mapped_reads > 0:
+                   truncate_par1 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                      '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
+                      stdin=bwasw_par1.stdout, stdout=subprocess.PIPE)
+                   calmd_stdin = truncate_par1.stdout
+                else:
+                   calmd_stdin = bwasw_par1.stdout
+                if GEN_MD:
+                   calmd_par1_stderr = './{}/samtoolsCalmd_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                   calmd_par1 = subprocess.Popen([self.options.samtools_path, 'calmd',
+                      '-uS', '-', parent1],
+                      stdin=calmd_stdin, stderr=open(calmd_par1_stderr, 'w'),
+                      stdout=subprocess.PIPE)
+                   tobam_stdin = calmd_par1.stdout
+                   tobam_IOargs = '-bh'
+                else:
+                   tobam_stdin = calmd_stdin
+                   tobam_IOargs = '-bhS'
+                tobam_par1 = subprocess.Popen([self.options.samtools_path, 'view',
+                   tobam_IOargs, '-q', self.options.mapq_filter, '-o', par1_bam],
+                   stdin=tobam_stdin, stderr=open(tobam_par1_stderr, 'w'))
+                #Make sure that SIGPIPE is properly handled:
+                bwasw_par1.stdout.close()
+                if self.options.max_mapped_reads > 0:
+                   truncate_par1.stdout.close()
+                if GEN_MD:
+                   calmd_par1.stdout.close()
+                #Collect the exit codes:
+                #TODO: Adapt this to parallel mapping
+                if GEN_MD and self.options.max_mapped_reads > 0:
+                   par1_exit_codes = [bwasw_par1.wait(), truncate_par1.wait(), calmd_par1.wait(), tobam_par1.wait()]
+                elif GEN_MD:
+                   par1_exit_codes = [bwasw_par1.wait(), calmd_par1.wait(), tobam_par1.wait()]
+                elif self.options.max_mapped_reads > 0:
+                   par1_exit_codes = [bwasw_par1.wait(), truncate_par1.wait(), tobam_par1.wait()]
+                else:
+                   par1_exit_codes = [bwasw_par1.wait(), tobam_par1.wait()]
 
-                #Align each to sec - output fastq file
-                file_par2_sam = open(aln_par2_sam,'w')
-                file_par2_sam = subprocess.Popen(['bwa', 'bwasw',
-                    '-t ' + str(self.options.bwa_threads), parent2, fastq_file], 
-                    stdout=file_par2_sam, stderr=file_par2_log)
-
-                #pause until these two processes are finished. This is a precaution. Don't want to continue until sure sam files are completely written 
-                file_par1_sam.wait()
-                file_par2_sam.wait()
+                #Align to par2 ("sec"):
+                bwasw_par2_stderr = './{}/bwasw_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                tobam_par2_stderr = './{}/samtoolsViewToBAM_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                bwasw_par2 = subprocess.Popen(['bwa', 'bwasw',
+                   '-t', self.options.bwa_threads, parent2, fastq_file],
+                   stdout=subprocess.PIPE, stderr=open(bwasw_par2_stderr, 'w'))
+                if self.options.max_mapped_reads > 0:
+                   truncate_par2 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                      '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
+                      stdin=bwasw_par2.stdout, stdout=subprocess.PIPE)
+                   calmd_stdin = truncate_par2.stdout
+                else:
+                   calmd_stdin = bwasw_par2.stdout
+                if GEN_MD:
+                   calmd_par2_stderr = './{}/samtoolsCalmd_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                   calmd_par2 = subprocess.Popen([self.options.samtools_path, 'calmd',
+                      '-uS', '-', parent2],
+                      stdin=calmd_stdin, stderr=open(calmd_par2_stderr, 'w'),
+                      stdout=subprocess.PIPE)
+                   tobam_par2_stdin = calmd_par2.stdout
+                   tobam_IOargs = '-bh'
+                else:
+                   tobam_par2_stdin = calmd_stdin
+                   tobam_IOargs = '-bhS'
+                tobam_par2 = subprocess.Popen([self.options.samtools_path, 'view',
+                   tobam_IOargs, '-q', self.options.mapq_filter, '-o', par2_bam],
+                   stdin=tobam_par2_stdin, stderr=open(tobam_par2_stderr, 'w'))
+                #Make sure that SIGPIPE is properly handled:
+                bwasw_par2.stdout.close()
+                if self.options.max_mapped_reads > 0:
+                   truncate_par2.stdout.close()
+                if GEN_MD:
+                   calmd_par2.stdout.close()
+                #Collect the exit codes:
+                #TODO: Adapt this to parallel mapping
+                if GEN_MD and self.options.max_mapped_reads > 0:
+                   par2_exit_codes = [bwasw_par2.wait(), truncate_par2.wait(), calmd_par2.wait(), tobam_par2.wait()]
+                elif GEN_MD:
+                   par2_exit_codes = [bwasw_par2.wait(), calmd_par2.wait(), tobam_par2.wait()]
+                elif self.options.max_mapped_reads > 0:
+                   par2_exit_codes = [bwasw_par2.wait(), truncate_par2.wait(), tobam_par2.wait()]
+                else:
+                   par2_exit_codes = [bwasw_par2.wait(), tobam_par2.wait()]
 
             elif self.options.bwa_alg == 'mem': #Added BWA-MEM support
-                #Align reads to par1:
-                file_par1_sam = open(aln_par1_sam, 'w')
-                file_par1_sam = subprocess.Popen(['bwa',
-                    'mem', '-t ' + str(self.options.bwa_threads), parent1, fastq_file],
-                    stdout=file_par1_sam, stderr=file_par1_log)
+                #Align reads to par1 ("sim"):
+                mem_par1_stderr = './{}/aln_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                tobam_par1_stderr = './{}/samtoolsViewToBAM_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                mem_par1 = subprocess.Popen(['bwa', 'mem',
+                   '-t', self.options.bwa_threads, parent1, fastq_file],
+                   stdout=subprocess.PIPE, stderr=open(mem_par1_stderr, 'w'))
+                if self.options.max_mapped_reads > 0:
+                   truncate_par1 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                      '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
+                      stdin=mem_par1.stdout, stdout=subprocess.PIPE)
+                   tobam_stdin = truncate_par1.stdout
+                else:
+                   tobam_stdin = mem_par1.stdout
+                tobam_par1 = subprocess.Popen([self.options.samtools_path, 'view',
+                   '-bhS', '-q', self.options.mapq_filter, '-o', par1_bam],
+                   stdin=tobam_stdin, stderr=open(tobam_par1_stderr, 'w'))
+                #Make sure that SIGPIPE is properly handled:
+                mem_par1.stdout.close()
+                if self.options.max_mapped_reads > 0:
+                   truncate_par1.stdout.close()
+                #Collect the exit codes:
+                #TODO: Adapt this to parallel mapping
+                if self.options.max_mapped_reads > 0:
+                   par1_exit_codes = [mem_par1.wait(), truncate_par1.wait(), tobam_par1.wait()]
+                else:
+                   par1_exit_codes = [mem_par1.wait(), tobam_par1.wait()]
 
-                #Align reads to par2:
-                file_par2_sam = open(aln_par2_sam, 'w')
-                file_par2_sam = subprocess.Popen(['bwa',
-                    'mem', '-t ' + str(self.options.bwa_threads), parent2, fastq_file],
-                    stdout=file_par2_sam, stderr=file_par2_log)
+                #Align reads to par2 ("sec"):
+                mem_par2_stderr = './{}/aln_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                tobam_par2_stderr = './{}/samtoolsViewToBAM_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                mem_par2 = subprocess.Popen(['bwa', 'mem',
+                   '-t', self.options.bwa_threads, parent2, fastq_file],
+                   stdout=subprocess.PIPE, stderr=open(mem_par2_stderr, 'w'))
+                if self.options.max_mapped_reads > 0:
+                   truncate_par2 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                      '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
+                      stdin=mem_par2.stdout, stdout=subprocess.PIPE)
+                   tobam_stdin = truncate_par2.stdout
+                else:
+                   tobam_stdin = mem_par2.stdout
+                tobam_par2 = subprocess.Popen([self.options.samtools_path, 'view',
+                   '-bhS', '-q', self.options.mapq_filter, '-o', par2_bam],
+                   stdin=tobam_stdin, stderr=open(tobam_par2_stderr, 'w'))
+                #Make sure that SIGPIPE is properly handled:
+                mem_par2.stdout.close()
+                if self.options.max_mapped_reads > 0:
+                   truncate_par2.stdout.close()
+                #Collect the exit codes:
+                #TODO: Adapt this to parallel mapping
+                if self.options.max_mapped_reads > 0:
+                   par2_exit_codes = [mem_par2.wait(), truncate_par2.wait(), tobam_par2.wait()]
+                else:
+                   par2_exit_codes = [mem_par2.wait(), tobam_par2.wait()]
 
-                #Wait until both mapping processes are complete
-                file_par1_sam.wait()
-                file_par2_sam.wait()
             else:
                 raise ValueError('Not using stampy and invalid bwa_alg option: {}. Use aln or bwasw'.format(self.options.bwa_alg))
 
             #After updating files with options below, should we keep the intermediate version around:
-            put_back_command = self.options.debug and 'cp' or 'mv' #means 'cp' if DEBUG else 'mv'
+#            put_back_command = self.options.debug and 'cp' or 'mv' #means 'cp' if DEBUG else 'mv'
 
-            if self.options.mapq_filter:
-                # remove poor alignments if requested
-                for (sam_file, log_file) in ((aln_par1_sam,file_par1_log), (aln_par2_sam,file_par2_log)):
-                    subprocess.check_call('{} view -Sh -q {} -o {}.mapq_filtered.sam {}'.format(
-                        self.options.samtools_path, self.options.mapq_filter, sam_file, sam_file),
-                        shell=True, stdout=log_file, stderr=log_file)
-                    result = subprocess.check_call('{} -f {}.mapq_filtered.sam {}'.format(put_back_command, sam_file, sam_file), shell=True)
+#            if self.options.mapq_filter:
+#                # remove poor alignments if requested
+#                for (bam_file, log_file) in ((par1_bam,file_par1_log), (par2_bam,file_par2_log)):
+#                    subprocess.check_call('{} view -bh -q {} -o {}.mapq_filtered.bam {}'.format(
+#                        self.options.samtools_path, self.options.mapq_filter, bam_file, sam_file),
+#                        shell=True, stdout=log_file, stderr=log_file)
+#                    result = subprocess.check_call('{} -f {}.mapq_filtered.sam {}'.format(put_back_command, sam_file, sam_file), shell=True)
 
-            if GEN_MD and (self.options.bwa_alg == "bwasw" or self.options.use_stampy == 1):
-                #Add in MD tags since bwasw omits these
-                #(Write out to <output>.tmp.sam and then move.  Don't overwite input file directly since piped commands outputs continually.
-                #TODO: It might be worth sorting the input files first to speed this up. Measure and test.
-                for (sam_file, parent_, log_file) in ((aln_par1_sam, parent1, file_par1_log),(aln_par2_sam, parent2, file_par2_log)):
-                    result = subprocess.check_call(
-                        '{} calmd -uS {} {} | {} view -h -o {}.added_calmd.sam -'.format(self.options.samtools_path, sam_file, parent_, self.options.samtools_path, sam_file),
-                        shell=True, stderr=log_file)
-                    result = subprocess.check_call('{} -f {}.added_calmd.sam {}'.format(put_back_command, sam_file,sam_file), shell=True)
+#            if GEN_MD and (self.options.bwa_alg == "bwasw" or self.options.use_stampy == 1):
+#                #Add in MD tags since bwasw omits these
+#                #(Write out to <output>.tmp.sam and then move.  Don't overwite input file directly since piped commands outputs continually.
+#                #TODO: It might be worth sorting the input files first to speed this up. Measure and test.
+#                for (bam_file, parent_, log_file) in ((par1_bam, parent1, file_par1_log),(par2_bam, parent2, file_par2_log)):
+#                    #TODO: Convert into Pythonic pipe
+#                    result = subprocess.check_call(
+#                        '{} calmd -u {} {} | {} view -bh -o {}.added_calmd.bam -'.format(self.options.samtools_path, bam_file, parent_, self.options.samtools_path, bam_file),
+#                        shell=True, stderr=log_file)
+#                    result = subprocess.check_call('{} -f {}.added_calmd.bam {}'.format(put_back_command, bam_file, bam_file), shell=True)
 
-            assert (os.path.exists(aln_par1_sam) or os.path.exists(aln_par1_sam+'.gz'))
-            assert (os.path.exists(aln_par2_sam) or os.path.exists(aln_par2_sam+'.gz'))
+            assert (os.path.exists(par1_bam))
+            assert (os.path.exists(par2_bam))
             #subprocess.check_call('chmod 555 {}'.format(self.samdir),shell=True) #used for debugging to see what was deleting files downstream
-            print 'done sample {}. Created {} and {}'.format(fastq_file, aln_par1_sam, aln_par2_sam)
+            print 'done sample {}. Created {} and {}'.format(fastq_file, par1_bam, par2_bam)
 
             if int(self.options.num_ind) == sample_num: ##0.2.6
                 break
@@ -673,16 +973,18 @@ class ParseAndMap(CommandLineApp):
         mapping_time = self.mapped_time - self.parsed_time
         print "Mapping took about {} minutes".format(mapping_time/60)
 
+    #Note: This is unnecessary as of 0.3.3 due to the pipes
     def delete_files(self):
         #Delete sai files
         print "Deleting .sai files"   ##rewritten for 0.2.5 to delete only files processed in this script
 
-        barcodes_file = open(self.options.barcodes_file,'r')
-        barcodes_file.readline()##ignore first two lines of barcodes file
-        barcodes_file.readline()
-        sample_num = 0 ##0.2.6
+        #Again, unnecessary:
+#        barcodes_file = open(self.options.barcodes_file,'r')
+#        barcodes_file.readline()##ignore first two lines of barcodes file
+#        barcodes_file.readline()
+        sample_num = 0 ## 0.2.6
         for ind in self.bc:
-            sample_num +=1 ##0.2.6
+            sample_num +=1 ## 0.2.6
             fastq_file_name = 'indiv' + ind[1] + '_' + ind[0]
             target1 = './aln_' + fastq_file_name + '_par1.sai'
             target2 = './aln_' + fastq_file_name + '_par2.sai'
@@ -696,6 +998,7 @@ class ParseAndMap(CommandLineApp):
                 break
         barcodes_file.close()
 
+    #PFR Note: genotype() is completely unused and relies on a missing Perl script
     def genotype(self):
         #Make genomewide genotype calls for each individual
         #Output to new folder as EXCEL file
@@ -708,9 +1011,9 @@ class ParseAndMap(CommandLineApp):
             os.mkdir("./" + dirname + "/")
 
         barcodes_file = open(self.options.barcodes_file,'r')
-        sample_num = 0 ##0.2.6
+        sample_num = 0 ## 0.2.6
         for ind in self.bc:
-            sample_num +=1 ##0.2.6
+            sample_num +=1 ## 0.2.6
             fastq_file = 'indiv' + ind[1] + '_' + ind[0]
         ##        file1 = './' + raw_data + '_sam_files/aln_' + fastq_file + "_" + sp1 + ".sam"
         ##        file2 = './' + raw_data + '_sam_files/aln_' + fastq_file + "_" + sp2 + ".sam"
@@ -721,7 +1024,7 @@ class ParseAndMap(CommandLineApp):
 
             subprocess.call(["perl", "parse_BWA2sp.v8.3.pl", self.variables[0], self.variables[1], fastq_file, self.options.raw_data_file]) 
 
-            if int(self.options.num_ind) == sample_num:##0.2.6
+            if int(self.options.num_ind) == sample_num: ## 0.2.6
                 break
 
         barcodes_file.close()

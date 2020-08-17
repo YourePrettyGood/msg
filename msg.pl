@@ -422,6 +422,7 @@ mkdir $samfiles_dir unless (-d $samfiles_dir);
       '--new_parser', $new_parser || '0', '--new_parser_offset', $new_parser_offset || '0',
       '--new_parser_filter_out_seq', $new_parser_filter_out_seq || 'null',
       '--samtools_path', $samtools_path,
+      '--max_mapped_reads', $max_mapped_reads,
       "> $logdir/parseAndMap.msg$$.stdout 2> $logdir/parseAndMap.msg$$.stderr");
 
 ## Strip species out of reference column
