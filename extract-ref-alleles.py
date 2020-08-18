@@ -59,7 +59,7 @@ class App(CommandLineApp):
 
         op.add_option('--use_stampy', dest='use_stampy', type='int', default=0, 
             help='Was STAMPY used to generate SAM files? Set this to 1.')
-            
+        
         op.add_option('--repeat_threshold', dest='AS_XS_threshold', type='int', default=6,
             help='Minimum difference between top alignment and suboptimal alignment scores to keep')
 
@@ -77,7 +77,7 @@ class App(CommandLineApp):
     @trace
     def remove_non_matching_reads(self, sim_samfilepath, sec_samfilepath, delete_original_files=False):
         """Only keep reads that are in both files (by qname) and don't appear more than 
-        once in either file."""   
+        once in either file."""
         sim_removed_count, sec_removed_count = 0,0
         sim_reads, sec_reads = dict(), dict()
 
@@ -88,13 +88,13 @@ class App(CommandLineApp):
                 sim_reads[read.query_name] = sim_reads.setdefault(read.query_name,0) + 1
             except:
                 sim_reads[read.qname] = sim_reads.setdefault(read.qname,0) + 1
-                
+        
         #Close and later re-open input files to save memory and because I don't
         #seem to have access to the seek method in the pysam files to reset the fetch.
         sim_samfile_in.close()
         del sim_samfile_in
         gc.collect()
-                                
+        
         sec_samfile_in = self.open_as_pysam(sec_samfilepath)
         for read in sec_samfile_in.fetch(until_eof=True): #Newer pysam requires until_eof=True for SAM files, older ignores it
             try: #Newer pysam deprecates .qname in favour of .query_name
@@ -107,9 +107,9 @@ class App(CommandLineApp):
         gc.collect()
             
         both = set(sim_reads.keys()).intersection(set(sec_reads.keys()))
-        print "Found %s reads in sim file" % len(sim_reads)
-        print "Found %s reads in sec file" % len(sec_reads)
-        print "Found %s reads common to both files" % len(both)
+        print "Found {:d} reads in sim file".format(len(sim_reads))
+        print "Found {:d} reads in sec file".format(len(sec_reads))
+        print "Found {:d} reads common to both files".format(len(both))
         
         #write out only those in both
         
@@ -160,7 +160,7 @@ class App(CommandLineApp):
                 if read.qname in both and (sim_reads[read.qname] == 1 and sec_reads[read.qname] == 1):
                     sec_outfile.write(read)
                 else:
-                    sec_removed_count +=1 
+                    sec_removed_count +=1
             
         sec_samfile_in.close()
         del sec_samfile_in
@@ -171,7 +171,7 @@ class App(CommandLineApp):
         del sim_reads
         gc.collect()
         
-        print "Removed %s par1 reads and %s par2 reads" % (sim_removed_count, sec_removed_count)
+        print "Removed {:d} par1 reads and {:d} par2 reads".format(sim_removed_count, sec_removed_count)
         
         #Don't delete original since it would prevent us from re-running
         #if delete_original_files:
@@ -184,13 +184,13 @@ class App(CommandLineApp):
     def main(self):
 
         print "\n",get_free_memory(), "mB of free memory at program start"
-        print "Conserving Memory mode: %s" % str(CONSERVE_MEMORY)
+        print "Conserving Memory mode: {}".format(CONSERVE_MEMORY)
 
         #Clear out refs dir if it exists, create it if it doesn't
         #(It's important to delete any existing files because we open them to write
         #in append mode)
         self.refsdir = os.path.join(self.options.outdir, 'refs')
-        if os.path.exists(self.refsdir): 
+        if os.path.exists(self.refsdir):
             shutil.rmtree(self.refsdir)
             assert not os.path.exists(self.refsdir)
         #Just in case of filesystem desync, let's catch the possible exception:
@@ -216,8 +216,8 @@ class App(CommandLineApp):
 
         #Manipulates files/paths to get at the barcoded reads for this individual
         #e.g., /home/pinerog/msg_work/MSG_big/SRR071201.fastq_sam_files/aln_indivA1_AAATAG_par1.sam
-        sim_samfilename = 'aln_' + self.options.indiv + '_par1.sam'
-        sec_samfilename = 'aln_' + self.options.indiv + '_par2.sam'
+        sim_samfilename = 'aln_{}_par1.sam'.format(self.options.indiv)
+        sec_samfilename = 'aln_{}_par2.sam'.format(self.options.indiv)
         sim_samfilepath = os.path.join(self.options.samdir, sim_samfilename)
         sec_samfilepath = os.path.join(self.options.samdir, sec_samfilename)
         
@@ -239,8 +239,8 @@ class App(CommandLineApp):
         sim_samfile = self.open_as_pysam(sim_samfilepath)
         sec_samfile = self.open_as_pysam(sec_samfilepath)
 
-        sim_outfilename = 'aln_' + self.options.indiv + '_par1-filtered.sam'
-        sec_outfilename = 'aln_' + self.options.indiv + '_par2-filtered.sam'
+        sim_outfilename = 'aln_{}_par1-filtered.sam'.format(self.options.indiv)
+        sec_outfilename = 'aln_{}_par2-filtered.sam'.format(self.options.indiv)
 
 
         #Instead of doing conditional os.mkdir, just handle exception:
@@ -287,10 +287,10 @@ class App(CommandLineApp):
         bwa_alg = self.options.bwa_alg.lower()
         use_stampy = self.options.use_stampy
 
-        print('Filtering reads and extracting %s reference allele information' % refsp)
+        print('Filtering reads and extracting {} reference allele information'.format(refsp))
         print(sim_samfilename)
         print(sec_samfilename)
-        print('Processing contigs: %s' % ' '.join(self.options.chroms))
+        print('Processing contigs: {}'.format(' '.join(self.options.chroms)))
 
         i = 0
         read = {}
@@ -306,7 +306,7 @@ class App(CommandLineApp):
                 par1_rname = read['par1'].rname
                 par2_rname = read['par2'].rname
             par1_flag = read['par1'].flag
-            par2_flag = read['par2'].flag            
+            par2_flag = read['par2'].flag
 
             ref = sim_samfile.references[par1_rname]
             par2ref = dict(par1=sim_samfile.references[par1_rname],par2=sec_samfile.references[par2_rname])
@@ -316,10 +316,10 @@ class App(CommandLineApp):
             if not (par1_flag in omit_flags and par2_flag in omit_flags):
                 if verbosity:
                     try: #Newer pysam deprecates .qname in favour of .query_name
-                        print 'read %d %s flags (parent1: %d, parent2: %d) not in {0,16}: omitting' % (
+                        print 'read {:d} {} flags (parent1: {:d}, parent2: {:d}) not in {{0,16}}: omitting'.format(
                         i, read['par1'].query_name, par1_flag, par2_flag)
                     except:
-                        print 'read %d %s flags (parent1: %d, parent2: %d) not in {0,16}: omitting' % (
+                        print 'read {:d} {} flags (parent1: {:d}, parent2: {:d}) not in {{0,16}}: omitting'.format(
                         i, read['par1'].qname, par1_flag, par2_flag)
                 
                 continue
@@ -342,7 +342,7 @@ class App(CommandLineApp):
                     print read['par2'].qname
                 print seq_forward['par1']
                 print seq_forward['par2']
-                raise Exception('Reads on line %d differ' % i)
+                raise Exception('Reads on line {:d} differ'.format(i))
 
             #Check for valid reads.
             if bwa_alg == 'bwasw' or use_stampy == 1:
@@ -402,7 +402,7 @@ class App(CommandLineApp):
                     ok = one_best_match and no_suboptimal_matches
 
                 except (KeyError, AssertionError), e:
-                    print 'Possible tag missing: %s %s' % (read['par1'].qname, e)
+                    print 'Possible tag missing: {} {}'.format(read['par1'].qname, e)
                     ok = False
                 except: #Account for newer pysam, where opt is deprecated and replaced by get_tag
                     one_best_match = read['par1'].opt('X0') == 1 and read['par2'].opt('X0') == 1
@@ -432,12 +432,12 @@ class App(CommandLineApp):
                         verbosity)
                 except:
                     record_reference_alleles(
-                        refs['par1'][ref], refs['par2'][ref], 
-                        orths['par1'][ref], orths['par2'][ref], 
-                        read['par1'], read['par2'], 
-                        seq_forward['par1'], 
-                        ref_seqs['par1'][par2ref['par1']].seq, ref_seqs['par2'][par2ref['par2']].seq, 
-                        par2ref['par1'], par2ref['par2'], 
+                        refs['par1'][ref], refs['par2'][ref],
+                        orths['par1'][ref], orths['par2'][ref],
+                        read['par1'], read['par2'],
+                        seq_forward['par1'],
+                        ref_seqs['par1'][par2ref['par1']].seq, ref_seqs['par2'][par2ref['par2']].seq,
+                        par2ref['par1'], par2ref['par2'],
                         verbosity)
                     
   
@@ -449,7 +449,7 @@ class App(CommandLineApp):
                     #so we can clear them from memory.  We'll sort and dedupe them 
                     #at the end.
                     print "Offloading refs/orths to files to limit further memory usage."
-                    print "free memory left: %s mB." % get_free_memory()
+                    print "free memory left: {} mB.".format(get_free_memory())
                     need_sort_and_dedupe = True
                     self.store_and_remove_alleles_orths(refsp, refs, orths, False)
         print '\n'
@@ -576,7 +576,7 @@ def record_reference_alleles(alleles_par1, alleles_par2, orths_par1, orths_par2,
         ref_pos = read.pos + 1
 
     revComp_flag = 0
-    if sim_read.flag != read.flag and (read.flag == 16 or sim_read.flag == 16): 
+    if sim_read.flag != read.flag and (read.flag == 16 or sim_read.flag == 16):
         revComp_flag = 1
         try: #Newer pysam deprecates .seq in favour of .query_sequence and .pos in favour of .reference_start
             ref_pos = read.reference_start + len(read.query_sequence)
@@ -592,26 +592,26 @@ def record_reference_alleles(alleles_par1, alleles_par2, orths_par1, orths_par2,
 
     if verbosity:
         try: #Newer pysam deprecates .qname in favour of .query_name, and .cigar in favour of .cigartuples
-            print "\n\n" + "*" * 100 + "\n" + str(sim_read.query_name) + "\n" + "*" * 100 + "\n"
+            print "\n\n{1}\n{2}\n{1}\n".format("*" * 100, sim_read.query_name)
             print "*** SIM_READ ***"
             print sim_read.cigartuples
             print cigar_ops_sim
             print "*** READ ***"
             print read.cigartuples
             print cigar_ops
-            print "\n*** READ INFO ***\nORIG ref_pos %d" % ref_pos
+            print "\n*** READ INFO ***\nORIG ref_pos {:d}".format(ref_pos)
         except:
-            print "\n\n" + "*" * 100 + "\n" + str(sim_read.qname) + "\n" + "*" * 100 + "\n"
+            print "\n\n{1}\n{2}\n{1}\n".format("*" * 100, sim_read.qname)
             print "*** SIM_READ ***"
             print sim_read.cigar
             print cigar_ops_sim
             print "*** READ ***"
             print read.cigar
             print cigar_ops
-            print "\n*** READ INFO ***\nORIG ref_pos %d" % ref_pos
+            print "\n*** READ INFO ***\nORIG ref_pos {:d}".format(ref_pos)
 
-    if revComp_flag==1: 
-        if verbosity: 
+    if revComp_flag==1:
+        if verbosity:
             print "reversing order"
             print cigar_ops
         try: #Newer pysam deprecates .cigar in favour of .cigartuples
@@ -625,9 +625,9 @@ def record_reference_alleles(alleles_par1, alleles_par2, orths_par1, orths_par2,
         for (op, op_len) in cigar_ops:
             if op == 1:		ref_pos -= op_len # insertion to reference
             elif op == 2:	ref_pos += op_len # deletion from reference
-        if verbosity: print "NEW  ref_pos %d" % ref_pos
+        if verbosity: print "NEW  ref_pos {:d}".format(ref_pos)
 
-    if verbosity: print "flag " + str(revComp_flag) + "\n" + seq_forward
+    if verbosity: print "flag {}\n{}".format(revComp_flag, seq_forward)
 
 
     ####################################################################################################
@@ -643,7 +643,7 @@ def record_reference_alleles(alleles_par1, alleles_par2, orths_par1, orths_par2,
     except:
         ref_seq,read_like_sec = updateRefRead(read.qname, cigar_ops, seq_forward, revComp_flag, verbosity, "*")
 
-    if verbosity: print "\n_____FINAL COMPARISON_____\nread     %s\nsim      %s\nlike_sim %s\nsec      %s\nlike_sec %s" % (seq_forward,sim_ref_seq,read_like_sim,ref_seq,read_like_sec)
+    if verbosity: print "\n_____FINAL COMPARISON_____\nread     {}\nsim      {}\nlike_sim {}\nsec      {}\nlike_sec {}".format(seq_forward,sim_ref_seq,read_like_sim,ref_seq,read_like_sec)
     if verbosity and len(sim_ref_seq) != len(ref_seq): print "\n_____CHECK ME_____"
 
     ##################################################
@@ -658,17 +658,17 @@ def record_reference_alleles(alleles_par1, alleles_par2, orths_par1, orths_par2,
 
     if verbosity:
         try: #Newer pysam deprecates .pos in favour of .reference_start
-            print("\n*** DETERMINE DIFFS ***\nrevComp_flag %s\npar1_pos %d / read_pos %d - %d\nread   %s\nsimref %s\nrefseq %s\nsimref %s\nsecref %s\nsec_rc %s\n" % 
-                (str(revComp_flag),pos,ref_pos,end_ref_pos,seq_forward,sim_ref_seq,ref_seq,
-                str(par1_ref_seq[sim_read.reference_start:end_pos]),
-                str(par2_ref_seq[read.reference_start:end_ref_pos]),
-                str(par2_ref_seq[read.reference_start:end_ref_pos].reverse_complement())))
+            print("\n*** DETERMINE DIFFS ***\nrevComp_flag {}\npar1_pos {:d} / read_pos {:d} - {:d}\nread   {}\nsimref {}\nrefseq {}\nsimref {}\nsecref {}\nsec_rc {}\n".format(
+                revComp_flag,pos,ref_pos,end_ref_pos,seq_forward,sim_ref_seq,ref_seq,
+                par1_ref_seq[sim_read.reference_start:end_pos],
+                par2_ref_seq[read.reference_start:end_ref_pos],
+                par2_ref_seq[read.reference_start:end_ref_pos].reverse_complement()))
         except:
-            print("\n*** DETERMINE DIFFS ***\nrevComp_flag %s\npar1_pos %d / read_pos %d - %d\nread   %s\nsimref %s\nrefseq %s\nsimref %s\nsecref %s\nsec_rc %s\n" % 
-                (str(revComp_flag),pos,ref_pos,end_ref_pos,seq_forward,sim_ref_seq,ref_seq,
-                str(par1_ref_seq[sim_read.pos:end_pos]),
-                str(par2_ref_seq[read.pos:end_ref_pos]),
-                str(par2_ref_seq[read.pos:end_ref_pos].reverse_complement())))
+            print("\n*** DETERMINE DIFFS ***\nrevComp_flag {}\npar1_pos {:d} / read_pos {:d} - {:d}\nread   {}\nsimref {}\nrefseq {}\nsimref {}\nsecref {}\nsec_rc {}\n".format(
+                revComp_flag,pos,ref_pos,end_ref_pos,seq_forward,sim_ref_seq,ref_seq,
+                par1_ref_seq[sim_read.pos:end_pos],
+                par2_ref_seq[read.pos:end_ref_pos],
+                par2_ref_seq[read.pos:end_ref_pos].reverse_complement()))
 
     index_sim = 0
     index_ref = 0
@@ -720,11 +720,11 @@ def record_reference_alleles(alleles_par1, alleles_par2, orths_par1, orths_par2,
         if (not str_sim_ref_seq[index_sim] in ("_","-")) and (not str_ref_seq[index_ref] in ("_","-")):
 
             alleles_par1[pos] = par1_ref_seq[pos-1:pos]
-            orths_par1[pos] = contig + "\t" + str(pos) + "\t0" + "\t" + str(alleles_par1[pos])
+            orths_par1[pos] = "{}\t{:d}\t0\t{}".format(contig, pos, alleles_par1[pos])
 
             alleles_par2[pos] = par2_ref_seq[ref_pos-1:ref_pos]
             if revComp_flag: alleles_par2[pos] = par2_ref_seq[ref_pos-1:ref_pos].complement()
-            orths_par2[pos] = scaffold + "\t" + str(ref_pos) + "\t" + str(revComp_flag) + "\t" + str(alleles_par2[pos])
+            orths_par2[pos] = "{}\t{:d}\t{}\t{}".format(scaffold, ref_pos, revComp_flag, alleles_par2[pos])
 
             #reconstruct_ref1 += alleles_par1[pos]
             #reconstruct_ref2 += alleles_par2[pos]
@@ -756,13 +756,13 @@ def updateRefRead(read_id, read_cigar_ops, seq_forward, revComp_flag, verbosity,
     i = 0
     j = 0
     for (op, op_len) in read_cigar_ops:
-        if verbosity: print "i_%d_op_%d_oplen_%d" % (i,op,op_len)
+        if verbosity: print "i_{:d}_op_{:d}_oplen_{:d}".format(i,op,op_len)
 
-        if op == 0:	
+        if op == 0:
             refseq += seq_forward[i:i+op_len]
             updated_seq_forward += seq_forward[j:j+op_len]
 
-        elif op == 1:	
+        elif op == 1:
             refseq += '-' * op_len
             updated_seq_forward += seq_forward[j:j+op_len]
 
@@ -770,17 +770,17 @@ def updateRefRead(read_id, read_cigar_ops, seq_forward, revComp_flag, verbosity,
             refseq += '_' * op_len
             updated_seq_forward += padding_str * op_len
 
-        elif op in (4,5):	
+        elif op in (4,5):
             refseq += 'X' * op_len # ignored but present in reference
             updated_seq_forward += seq_forward[j:j+op_len]
 
         elif op != 6:
-            if verbosity: print "%s unknown op %d" % (read_id,op)
-            raise Exception('--> %s <-- Non-standard operation in CIGAR (%d,%d)' % (str(read_id),op,op_len))
+            if verbosity: print "{} unknown op {:d}".format(read_id,op)
+            raise Exception('--> {} <-- Non-standard operation in CIGAR ({:d},{:d})'.format(read_id,op,op_len))
 
         if op != 2: i += op_len
         if op != 2: j += op_len
-        if verbosity: print "ref  " + refseq + "\nread " + updated_seq_forward
+        if verbosity: print "ref  {}\nread {}".format(refseq, updated_seq_forward)
 
     return (refseq,updated_seq_forward)
 
@@ -806,7 +806,7 @@ if __name__ == '__main__':
         App().run()
     except Exception, e:
         print bcolors.FAIL + 'ERROR in extract-ref-alleles:\n' + bcolors.ENDC
-        print '%s' % e
+        print '{}'.format(e)
         sys.exit(2)
     #'''
 # block-25 ends here
