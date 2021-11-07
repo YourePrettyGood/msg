@@ -65,14 +65,14 @@ class App(CommandLineApp):
 
     def open_as_pysam(self, filepath):
         try: #Newer pysam deprecates Samfile object in favour of AlignmentFile object
-            return pysam.Samfile(filepath, 'r')
+            return pysam.Samfile(filepath, 'rb')
         except IOError:
-            return pysam.Samfile(filepath + '.gz','r')
+            return pysam.Samfile(filepath + '.gz','rb')
         except AttributeError:
             try:
-                return pysam.AlignmentFile(filepath, 'r')
+                return pysam.AlignmentFile(filepath, 'rb')
             except IOError:
-                return pysam.AlignmentFile(filepath + '.gz', 'r')
+                return pysam.AlignmentFile(filepath + '.gz', 'rb')
 
     @trace
     def remove_non_matching_reads(self, sim_samfilepath, sec_samfilepath, delete_original_files=False):
@@ -107,20 +107,20 @@ class App(CommandLineApp):
         gc.collect()
             
         both = set(sim_reads.keys()).intersection(set(sec_reads.keys()))
-        print "Found {:d} reads in sim file".format(len(sim_reads))
-        print "Found {:d} reads in sec file".format(len(sec_reads))
+        print "Found {:d} reads in par1 file".format(len(sim_reads))
+        print "Found {:d} reads in par2 file".format(len(sec_reads))
         print "Found {:d} reads common to both files".format(len(both))
         
         #write out only those in both
         
         sim_samfile_in = self.open_as_pysam(sim_samfilepath)
         sim_orig_header = sim_samfile_in.header
-        out_sim_samfilepath = sim_samfilepath + '.noncommon.reads.removed.sam'
+        out_sim_samfilepath = sim_samfilepath + '.noncommon.reads.removed.bam'
         try: #Newer pysam deprecates Samfile object in favour of AlignmentFile object
-            sim_outfile = pysam.Samfile(out_sim_samfilepath, 'wh', template=sim_samfile_in,
+            sim_outfile = pysam.Samfile(out_sim_samfilepath, 'wb', template=sim_samfile_in,
                 header=sim_orig_header)
         except AttributeError:
-            sim_outfile = pysam.AlignmentFile(out_sim_samfilepath, 'wh', template=sim_samfile_in,
+            sim_outfile = pysam.AlignmentFile(out_sim_samfilepath, 'wb', template=sim_samfile_in,
                 header=sim_orig_header)
         
         for read in sim_samfile_in.fetch(until_eof=True): #Newer pysam requires until_eof=True for SAM files, older ignores it
@@ -143,12 +143,12 @@ class App(CommandLineApp):
         
         sec_samfile_in = self.open_as_pysam(sec_samfilepath)
         sec_orig_header = sec_samfile_in.header
-        out_sec_samfilepath = sec_samfilepath + '.noncommon.reads.removed.sam'
+        out_sec_samfilepath = sec_samfilepath + '.noncommon.reads.removed.bam'
         try: #Newer pysam deprecates Samfile object in favour of AlignmentFile object
-            sec_outfile = pysam.AlignmentFile(out_sec_samfilepath, 'wh', template=sec_samfile_in,
+            sec_outfile = pysam.AlignmentFile(out_sec_samfilepath, 'wb', template=sec_samfile_in,
                 header=sec_orig_header)
         except AttributeError:
-            sec_outfile = pysam.Samfile(out_sec_samfilepath, 'wh', template=sec_samfile_in,
+            sec_outfile = pysam.Samfile(out_sec_samfilepath, 'wb', template=sec_samfile_in,
                 header=sec_orig_header)
         for read in sec_samfile_in.fetch(until_eof=True): #Newer pysam requires until_eof=True for SAM files, older ignores it
             try: #Newer pysam deprecates .qname in favour of .query_name
@@ -216,8 +216,8 @@ class App(CommandLineApp):
 
         #Manipulates files/paths to get at the barcoded reads for this individual
         #e.g., /home/pinerog/msg_work/MSG_big/SRR071201.fastq_sam_files/aln_indivA1_AAATAG_par1.sam
-        sim_samfilename = 'aln_{}_par1.sam'.format(self.options.indiv)
-        sec_samfilename = 'aln_{}_par2.sam'.format(self.options.indiv)
+        sim_samfilename = 'aln_{}_par1.bam'.format(self.options.indiv)
+        sec_samfilename = 'aln_{}_par2.bam'.format(self.options.indiv)
         sim_samfilepath = os.path.join(self.options.samdir, sim_samfilename)
         sec_samfilepath = os.path.join(self.options.samdir, sec_samfilename)
         
@@ -239,8 +239,8 @@ class App(CommandLineApp):
         sim_samfile = self.open_as_pysam(sim_samfilepath)
         sec_samfile = self.open_as_pysam(sec_samfilepath)
 
-        sim_outfilename = 'aln_{}_par1-filtered.sam'.format(self.options.indiv)
-        sec_outfilename = 'aln_{}_par2-filtered.sam'.format(self.options.indiv)
+        sim_outfilename = 'aln_{}_par1-filtered.bam'.format(self.options.indiv)
+        sec_outfilename = 'aln_{}_par2-filtered.bam'.format(self.options.indiv)
 
 
         #Instead of doing conditional os.mkdir, just handle exception:
@@ -256,17 +256,17 @@ class App(CommandLineApp):
 
         try: #Newer pysam deprecates Samfile object in favour of AlignmentFile object
             sim_outfile = pysam.Samfile(os.path.join(self.options.outdir, sim_outfilename),
-                                        'w', template=sim_samfile)
+                                        'wb', template=sim_samfile)
             sec_outfile = pysam.Samfile(os.path.join(self.options.outdir, sec_outfilename),
-                                        'w', template=sec_samfile)
+                                        'wb', template=sec_samfile)
         except:
             sim_outfile = pysam.AlignmentFile(os.path.join(self.options.outdir, sim_outfilename),
-                                        'w', template=sim_samfile)
+                                        'wb', template=sim_samfile)
             sec_outfile = pysam.AlignmentFile(os.path.join(self.options.outdir, sec_outfilename),
-                                        'w', template=sec_samfile)
+                                        'wb', template=sec_samfile)
 
         #initialize xxx_refs data structures to an empty dict
-        print bcolors.OKBLUE + 'Opened SAM files for processing' + bcolors.ENDC;
+        print bcolors.OKBLUE + 'Opened BAM files for processing' + bcolors.ENDC;
         #set up sim ref and sec ref containers - use an empty dict when a key is missing
         #refs, are orths are the only large things kept in memory
         refs = dict(par1=defaultdict(dict), par2=defaultdict(dict))
@@ -593,7 +593,7 @@ def record_reference_alleles(alleles_par1, alleles_par2, orths_par1, orths_par2,
     if verbosity:
         try: #Newer pysam deprecates .qname in favour of .query_name, and .cigar in favour of .cigartuples
             print "\n\n{1}\n{2}\n{1}\n".format("*" * 100, sim_read.query_name)
-            print "*** SIM_READ ***"
+            print "*** PAR1_READ ***"
             print sim_read.cigartuples
             print cigar_ops_sim
             print "*** READ ***"
@@ -602,7 +602,7 @@ def record_reference_alleles(alleles_par1, alleles_par2, orths_par1, orths_par2,
             print "\n*** READ INFO ***\nORIG ref_pos {:d}".format(ref_pos)
         except:
             print "\n\n{1}\n{2}\n{1}\n".format("*" * 100, sim_read.qname)
-            print "*** SIM_READ ***"
+            print "*** PAR1_READ ***"
             print sim_read.cigar
             print cigar_ops_sim
             print "*** READ ***"
@@ -631,19 +631,19 @@ def record_reference_alleles(alleles_par1, alleles_par2, orths_par1, orths_par2,
 
 
     ####################################################################################################
-    if verbosity: print "\n*** UPDATING SIM READ ***\n" + "#####"*10
+    if verbosity: print "\n*** UPDATING PAR1 READ ***\n" + "#####"*10
     try: #Newer pysam deprecates .qname in favour of .query_name
         sim_ref_seq,read_like_sim = updateRefRead(sim_read.query_name, cigar_ops_sim, seq_forward, 0, verbosity, "+")
     except:
         sim_ref_seq,read_like_sim = updateRefRead(sim_read.qname, cigar_ops_sim, seq_forward, 0, verbosity, "+")
 
-    if verbosity: print "\n*** UPDATING SEC READ ***\n" + "#####"*10
+    if verbosity: print "\n*** UPDATING PAR2 READ ***\n" + "#####"*10
     try: #Newer pysam deprecates .qname in favour of .query_name
         ref_seq,read_like_sec = updateRefRead(read.query_name, cigar_ops, seq_forward, revComp_flag, verbosity, "*")
     except:
         ref_seq,read_like_sec = updateRefRead(read.qname, cigar_ops, seq_forward, revComp_flag, verbosity, "*")
 
-    if verbosity: print "\n_____FINAL COMPARISON_____\nread     {}\nsim      {}\nlike_sim {}\nsec      {}\nlike_sec {}".format(seq_forward,sim_ref_seq,read_like_sim,ref_seq,read_like_sec)
+    if verbosity: print "\n_____FINAL COMPARISON_____\nread     {}\npar1      {}\nlike_par1 {}\npar2      {}\nlike_par2 {}".format(seq_forward,sim_ref_seq,read_like_sim,ref_seq,read_like_sec)
     if verbosity and len(sim_ref_seq) != len(ref_seq): print "\n_____CHECK ME_____"
 
     ##################################################
@@ -658,13 +658,13 @@ def record_reference_alleles(alleles_par1, alleles_par2, orths_par1, orths_par2,
 
     if verbosity:
         try: #Newer pysam deprecates .pos in favour of .reference_start
-            print("\n*** DETERMINE DIFFS ***\nrevComp_flag {}\npar1_pos {:d} / read_pos {:d} - {:d}\nread   {}\nsimref {}\nrefseq {}\nsimref {}\nsecref {}\nsec_rc {}\n".format(
+            print("\n*** DETERMINE DIFFS ***\nrevComp_flag {}\npar1_pos {:d} / read_pos {:d} - {:d}\nread   {}\npar1ref {}\nrefseq {}\npar1ref {}\npar2ref {}\npar2_rc {}\n".format(
                 revComp_flag,pos,ref_pos,end_ref_pos,seq_forward,sim_ref_seq,ref_seq,
                 par1_ref_seq[sim_read.reference_start:end_pos],
                 par2_ref_seq[read.reference_start:end_ref_pos],
                 par2_ref_seq[read.reference_start:end_ref_pos].reverse_complement()))
         except:
-            print("\n*** DETERMINE DIFFS ***\nrevComp_flag {}\npar1_pos {:d} / read_pos {:d} - {:d}\nread   {}\nsimref {}\nrefseq {}\nsimref {}\nsecref {}\nsec_rc {}\n".format(
+            print("\n*** DETERMINE DIFFS ***\nrevComp_flag {}\npar1_pos {:d} / read_pos {:d} - {:d}\nread   {}\npar1ref {}\nrefseq {}\npar1ref {}\npar2ref {}\npar2_rc {}\n".format(
                 revComp_flag,pos,ref_pos,end_ref_pos,seq_forward,sim_ref_seq,ref_seq,
                 par1_ref_seq[sim_read.pos:end_pos],
                 par2_ref_seq[read.pos:end_ref_pos],

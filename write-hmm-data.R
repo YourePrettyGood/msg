@@ -78,7 +78,7 @@ for(contig in contigs) {
         cat("File exists -- skipping:", outfile, "\n")
         next
     }
-    pupfile <- sprintf("%s/aln_%s_%s-filtered-%s-sorted.pileup", dir, indiv, pupsp, contig)
+    pupfile <- sprintf("%s/aln_%s_%s-filtered-%s-sorted.pileup.gz", dir, indiv, pupsp, contig)
     if(!file.exists(pupfile)) {
         cat("MISSING ",pupfile,"\n")
         next
@@ -89,7 +89,7 @@ for(contig in contigs) {
         ## pup <- read.delim(pipe(paste("cut -f1-10 <", pupfile)), header=FALSE, as.is=TRUE, na.strings=NULL)
         ## pup <- read.delim(pipe(paste("cut -f2,3,4,9 <", pupfile)), header=FALSE, as.is=TRUE, na.strings=NULL)
         ## colnames(pup) <- c("contig","pos","ref","cons","v","w","x","y","reads","z")
-        pipa <- pipe(paste("cut -f2,3,4,9,10 <", pupfile))
+        pipa <- pipe(paste("gzip -dc", pupfile, "| cut -f2,3,4,9,10"))
         pup <- scan(pipa, what="", sep="\n")
         close(pipa)
         pup <- strsplit(pup, "\t")

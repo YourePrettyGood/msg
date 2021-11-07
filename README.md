@@ -241,3 +241,4 @@ Generic to clusters:
 [] Generalize cluster submission in `msgUpdateParentals.pl`
 [] Figure out a way to reduce the memory usage when generating the LOD matrix
 [] Eliminate (if possible) the samtools version dependency
+[] (In progress, see bamonly branch) Rewrite msgRun1 and msgRun2 to store only BAMs and gzipped pileups to reduce disk usage
