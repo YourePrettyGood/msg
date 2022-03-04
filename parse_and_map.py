@@ -209,6 +209,7 @@ class ParseAndMap(CommandLineApp):
                 #bwasw, stampy, and mem don't make sai files
                 #Skip this as of 0.3.3, since we pipe and don't make .sai files
                 #self.delete_files()
+                pass
 
     def parse_all(self):
         """Main parsing function"""
@@ -565,9 +566,9 @@ class ParseAndMap(CommandLineApp):
                 assert os.path.exists(fastq_file),"File {} could not be found.  Something has gone wrong.".format(fastq_file)
 
             #Change format for sim - output BAM file
-            par1_bam = './{}_sam_files/aln_{}_par1.bam'.format(raw_data, fastq_file_name)
+            par1_bam = '{}_sam_files/aln_{}_par1.bam'.format(raw_data, fastq_file_name)
             #Change format for sec - output BAM file
-            par2_bam = './{}_sam_files/aln_{}_par2.bam'.format(raw_data, fastq_file_name)
+            par2_bam = '{}_sam_files/aln_{}_par2.bam'.format(raw_data, fastq_file_name)
 
             if (os.path.exists(par1_bam) and os.path.exists(par2_bam)): 
                 print bcolors.WARN + 'Refusing to map reads for {}. BAMs already exist.'.format(fastq_file_name) + bcolors.ENDC
@@ -592,23 +593,23 @@ class ParseAndMap(CommandLineApp):
 #                    file_par2_log, misc_indiv_log)
                 #Revised Stampy execution:
                 #Align to par1 ("sim"):
-                stampy_par1_stderr = './{}/stampy_{}_par1.stderr'.format(self.logdir, fastq_file_name)
-                tobam_par1.stderr = './{}/samtoolsViewToBAM_stampy_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                stampy_par1_stderr = open('{}/stampy_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
+                tobam_par1.stderr = open('{}/samtoolsViewToBAM_stampy_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
                 if self.options.stampy_premap_w_bwa == 1:
-                   par1_premap_bam = './{}_sam_files/stampy_premap_{}_par1.bam'.format(raw_data, fastq_file_name)
-                   aln_par1_stderr = './{}/aln_stampy_{}_par1.stderr'.format(self.logdir, fastq_file_name)
-                   samse_par1_stderr = './{}/samse_stampy_{}_par1.stderr'.format(self.logdir, fastq_file_name)
-                   tobam_premap_par1_stderr = './{}/samtoolsViewToBAM_aln_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                   par1_premap_bam = open('{}_sam_files/stampy_premap_{}_par1.bam'.format(raw_data, fastq_file_name), 'w')
+                   aln_par1_stderr = open('{}/aln_stampy_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
+                   samse_par1_stderr = open('{}/samse_stampy_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
+                   tobam_premap_par1_stderr = open('{}/samtoolsViewToBAM_aln_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
                    aln_par1 = subprocess.Popen(['bwa', 'aln',
                       '-q10',
-                      '-t', self.options.bwa_threads, parent1, fastq_file],
-                      stdout=subprocess.PIPE, stderr=open(aln_par1_stderr, 'w'))
+                      '-t', str(self.options.bwa_threads), parent1, fastq_file],
+                      stdout=subprocess.PIPE, stderr=aln_par1_stderr)
                    samse_par1 = subprocess.Popen(['bwa', 'samse', parent1, '-', fastq_file],
                       stdin=aln_par1.stdout, stdout=subprocess.PIPE,
-                      stderr=open(samse_par1_stderr, 'w'))
+                      stderr=samse_par1_stderr)
                    tobam_premap_par1 = subprocess.Popen([self.options.samtools_path, 'view',
-                      '-bhS', '-o', par1_premap_bam],
-                      stdin=samse_par1.stdout, stderr=open(tobam_premap_par1_stderr, 'w'))
+                      '-bhS', '-o', par1_premap_bam, '-'],
+                      stdin=samse_par1.stdout, stderr=tobam_premap_par1_stderr)
                    #Make sure that SIGPIPE is properly handled:
                    aln_par1.stdout.close()
                    samse_par1.stdout.close()
@@ -624,7 +625,7 @@ class ParseAndMap(CommandLineApp):
                       '--noparseNCBI',
                       '--substitutionrate={}'.format(self.options.stampy_substitution_rate),
                       '--bamkeepgoodreads', par1_premap_bam],
-                      stderr=open(stampy_par1_stderr, 'w'),
+                      stderr=stampy_par1_stderr,
                       stdout=subprocess.PIPE)
                 else:
                    #Run Stampy using the original FASTQ:
@@ -634,18 +635,18 @@ class ParseAndMap(CommandLineApp):
                       '--noparseNCBI',
                       '--substitutionrate={}'.format(self.options.stampy_substitution_rate),
                       '-M', fastq_file],
-                      stderr=open(stampy_par1_stderr, 'w'),
+                      stderr=stampy_par1_stderr,
                       stdout=subprocess.PIPE)
                 if self.options.max_mapped_reads > 0:
-                   truncate_par1 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                   truncate_par1 = subprocess.Popen(['{}/truncate_SAM.awk'.format(os.path.dirname(__file__)),
                       '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
                       stdin=stampy_par1.stdout, stdout=subprocess.PIPE)
                    tobam_stdin = truncate_par1.stdout
                 else:
                    tobam_stdin = stampy_par1.stdout
                 tobam_par1 = subprocess.Popen([self.options.samtools_path, 'view',
-                   '-bhS', '-q', self.options.mapq_filter, '-o', par1_bam],
-                   stdin=tobam_stdin, stderr=open(tobam_stampy_par1_stderr, 'w'))
+                   '-bhS', '-q', str(self.options.mapq_filter), '-o', par1_bam, '-'],
+                   stdin=tobam_stdin, stderr=tobam_stampy_par1_stderr)
                 #Make sure that SIGPIPE is properly handled:
                 stampy_par1.stdout.close()
                 if self.options.max_mapped_reads > 0:
@@ -658,23 +659,23 @@ class ParseAndMap(CommandLineApp):
                    par1_exit_codes = [stampy_par1.wait(), tobam_par1.wait()]
 
                 #Align to par2 ("sec"):
-                stampy_par2_stderr = './{}/stampy_{}_par2.stderr'.format(self.logdir, fastq_file_name)
-                tobam_par2.stderr = './{}/samtoolsViewToBAM_stampy_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                stampy_par2_stderr = open('{}/stampy_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
+                tobam_par2.stderr = open('{}/samtoolsViewToBAM_stampy_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
                 if self.options.stampy_premap_w_bwa == 1:
-                   par2_premap_bam = './{}_sam_files/stampy_premap_{}_par2.bam'.format(raw_data, fastq_file_name)
-                   aln_par2_stderr = './{}/aln_stampy_{}_par2.stderr'.format(self.logdir, fastq_file_name)
-                   samse_par2_stderr = './{}/samse_stampy_{}_par2.stderr'.format(self.logdir, fastq_file_name)
-                   tobam_premap_par2_stderr = './{}/samtoolsViewToBAM_aln_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                   par2_premap_bam = open('{}_sam_files/stampy_premap_{}_par2.bam'.format(raw_data, fastq_file_name), 'w')
+                   aln_par2_stderr = open('{}/aln_stampy_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
+                   samse_par2_stderr = open('{}/samse_stampy_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
+                   tobam_premap_par2_stderr = open('{}/samtoolsViewToBAM_aln_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
                    aln_par2 = subprocess.Popen(['bwa', 'aln',
                       '-q10',
-                      '-t', self.options.bwa_threads, parent2, fastq_file],
-                      stdout=subprocess.PIPE, stderr=open(aln_par2_stderr, 'w'))
+                      '-t', str(self.options.bwa_threads), parent2, fastq_file],
+                      stdout=subprocess.PIPE, stderr=aln_par2_stderr)
                    samse_par2 = subprocess.Popen(['bwa', 'samse', parent2, '-', fastq_file],
                       stdin=aln_par2.stdout, stdout=subprocess.PIPE,
-                      stderr=open(samse_par2_stderr, 'w'))
+                      stderr=samse_par2_stderr)
                    tobam_premap_par2 = subprocess.Popen([self.options.samtools_path, 'view',
-                      '-bhS', '-o', par2_premap_bam],
-                      stdin=samse_par2.stdout, stderr=open(tobam_premap_par2_stderr, 'w'))
+                      '-bhS', '-o', par2_premap_bam, '-'],
+                      stdin=samse_par2.stdout, stderr=tobam_premap_par2_stderr)
                    #Make sure that SIGPIPE is properly handled:
                    aln_par2.stdout.close()
                    samse_par2.stdout.close()
@@ -690,7 +691,7 @@ class ParseAndMap(CommandLineApp):
                       '--noparseNCBI',
                       '--substitutionrate={}'.format(self.options.stampy_substitution_rate),
                       '--bamkeepgoodreads', par2_premap_bam],
-                      stderr=open(stampy_par2_stderr, 'w'),
+                      stderr=stampy_par2_stderr,
                       stdout=subprocess.PIPE)
                 else:
                    #Run Stampy using the original FASTQ:
@@ -700,18 +701,18 @@ class ParseAndMap(CommandLineApp):
                       '--noparseNCBI',
                       '--substitutionrate={}'.format(self.options.stampy_substitution_rate),
                       '-M', fastq_file],
-                      stderr=open(stampy_par2_stderr, 'w'),
+                      stderr=stampy_par2_stderr,
                       stdout=subprocess.PIPE)
                 if self.options.max_mapped_reads > 0:
-                   truncate_par2 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                   truncate_par2 = subprocess.Popen(['{}/truncate_SAM.awk'.format(os.path.dirname(__file__)),
                       '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
                       stdin=stampy_par2.stdout, stdout=subprocess.PIPE)
                    tobam_stdin = truncate_par2.stdout
                 else:
                    tobam_stdin = stampy_par2.stdout
                 tobam_par2 = subprocess.Popen([self.options.samtools_path, 'view',
-                   '-bhS', '-q', self.options.mapq_filter, '-o', par2_bam],
-                   stdin=tobam_stdin, stderr=open(tobam_stampy_par2_stderr, 'w'))
+                   '-bhS', '-q', str(self.options.mapq_filter), '-o', par2_bam, '-'],
+                   stdin=tobam_stdin, stderr=tobam_stampy_par2_stderr)
                 #Make sure that SIGPIPE is properly handled:
                 stampy_par2.stdout.close()
                 if self.options.max_mapped_reads > 0:
@@ -726,25 +727,25 @@ class ParseAndMap(CommandLineApp):
             elif self.options.bwa_alg == 'aln':
                 #PFR revisions to pipe everything together and make BAM:
                 #Align to par1 ("sim"):
-                aln_par1_stderr = './{}/aln_{}_par1.stderr'.format(self.logdir, fastq_file_name)
-                samse_par1_stderr = './{}/samse_{}_par1.stderr'.format(self.logdir, fastq_file_name)
-                tobam_par1_stderr = './{}/samtoolsViewToBAM_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                aln_par1_stderr = open('{}/aln_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
+                samse_par1_stderr = open('{}/samse_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
+                tobam_par1_stderr = open('{}/samtoolsViewToBAM_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
                 aln_par1 = subprocess.Popen(['bwa', 'aln',
-                   '-t', self.options.bwa_threads, parent1, fastq_file],
-                   stdout=subprocess.PIPE, stderr=open(aln_par1_stderr, 'w'))
+                   '-t', str(self.options.bwa_threads), parent1, fastq_file],
+                   stdout=subprocess.PIPE, stderr=aln_par1_stderr)
                 samse_par1 = subprocess.Popen(['bwa', 'samse', parent1, '-', fastq_file],
                    stdin=aln_par1.stdout, stdout=subprocess.PIPE,
-                   stderr=open(samse_par1_stderr, 'w'))
+                   stderr=samse_par1_stderr)
                 if self.options.max_mapped_reads > 0:
-                   truncate_par1 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                   truncate_par1 = subprocess.Popen(['{}/truncate_SAM.awk'.format(os.path.dirname(__file__)),
                       '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
                       stdin=samse_par1.stdout, stdout=subprocess.PIPE)
                    tobam_stdin = truncate_par1.stdout
                 else:
                    tobam_stdin = samse_par1.stdout
                 tobam_par1 = subprocess.Popen([self.options.samtools_path, 'view',
-                   '-bhS', '-q', self.options.mapq_filter, '-o', par1_bam],
-                   stdin=tobam_stdin, stderr=open(tobam_par1_stderr, 'w'))
+                   '-bhS', '-q', str(self.options.mapq_filter), '-o', par1_bam, '-'],
+                   stdin=tobam_stdin, stderr=tobam_par1_stderr)
                 #Make sure that SIGPIPE is properly handled:
                 aln_par1.stdout.close()
                 samse_par1.stdout.close()
@@ -758,25 +759,25 @@ class ParseAndMap(CommandLineApp):
                    par1_exit_codes = [aln_par1.wait(), samse_par1.wait(), tobam_par1.wait()]
 
                 #Align to par2 ("sec"):
-                aln_par2_stderr = './{}/aln_{}_par2.stderr'.format(self.logdir, fastq_file_name)
-                samse_par2_stderr = './{}/samse_{}_par2.stderr'.format(self.logdir, fastq_file_name)
-                tobam_par2_stderr = './{}/samtoolsViewToBAM_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                aln_par2_stderr = open('{}/aln_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
+                samse_par2_stderr = open('{}/samse_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
+                tobam_par2_stderr = open('{}/samtoolsViewToBAM_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
                 aln_par2 = subprocess.Popen(['bwa', 'aln',
-                   '-t', self.options.bwa_threads, parent2, fastq_file],
-                   stdout=subprocess.PIPE, stderr=open(aln_par2_stderr, 'w'))
+                   '-t', str(self.options.bwa_threads), parent2, fastq_file],
+                   stdout=subprocess.PIPE, stderr=aln_par2_stderr)
                 samse_par2 = subprocess.Popen(['bwa', 'samse', parent2, '-', fastq_file],
                    stdin=aln_par2.stdout, stdout=subprocess.PIPE,
-                   stderr=open(samse_par2_stderr, 'w'))
+                   stderr=samse_par2_stderr)
                 if self.options.max_mapped_reads > 0:
-                   truncate_par2 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                   truncate_par2 = subprocess.Popen(['{}/truncate_SAM.awk'.format(os.path.dirname(__file__)),
                       '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
                       stdin=samse_par2.stdout, stdout=subprocess.PIPE)
                    tobam_stdin = truncate_par2.stdout
                 else:
                    tobam_stdin = samse_par2.stdout
                 tobam_par2 = subprocess.Popen([self.options.samtools_path, 'view',
-                   '-bhS', '-q', self.options.mapq_filter, '-o', par2_bam],
-                   stdin=tobam_stdin, stderr=open(tobam_par2_stderr, 'w'))
+                   '-bhS', '-q', str(self.options.mapq_filter), '-o', par2_bam, '-'],
+                   stdin=tobam_stdin, stderr=tobam_par2_stderr)
                 #Make sure that SIGPIPE is properly handled:
                 aln_par2.stdout.close()
                 samse_par2.stdout.close()
@@ -792,23 +793,23 @@ class ParseAndMap(CommandLineApp):
             elif self.options.bwa_alg == 'bwasw':
                 #PFR revisions to pipe everything together and make BAM:
                 #Align to par1 ("sim"):
-                bwasw_par1_stderr = './{}/bwasw_{}_par1.stderr'.format(self.logdir, fastq_file_name)
-                tobam_par1_stderr = './{}/samtoolsViewToBAM_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                bwasw_par1_stderr = open('{}/bwasw_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
+                tobam_par1_stderr = open('{}/samtoolsViewToBAM_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
                 bwasw_par1 = subprocess.Popen(['bwa', 'bwasw',
-                   '-t', self.options.bwa_threads, parent1, fastq_file],
-                   stdout=subprocess.PIPE, stderr=open(bwasw_par1_stderr, 'w'))
+                   '-t', str(self.options.bwa_threads), parent1, fastq_file],
+                   stdout=subprocess.PIPE, stderr=bwasw_par1_stderr)
                 if self.options.max_mapped_reads > 0:
-                   truncate_par1 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                   truncate_par1 = subprocess.Popen(['{}/truncate_SAM.awk'.format(os.path.dirname(__file__)),
                       '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
                       stdin=bwasw_par1.stdout, stdout=subprocess.PIPE)
                    calmd_stdin = truncate_par1.stdout
                 else:
                    calmd_stdin = bwasw_par1.stdout
                 if GEN_MD:
-                   calmd_par1_stderr = './{}/samtoolsCalmd_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                   calmd_par1_stderr = open('{}/samtoolsCalmd_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
                    calmd_par1 = subprocess.Popen([self.options.samtools_path, 'calmd',
                       '-uS', '-', parent1],
-                      stdin=calmd_stdin, stderr=open(calmd_par1_stderr, 'w'),
+                      stdin=calmd_stdin, stderr=calmd_par1_stderr,
                       stdout=subprocess.PIPE)
                    tobam_stdin = calmd_par1.stdout
                    tobam_IOargs = '-bh'
@@ -816,8 +817,8 @@ class ParseAndMap(CommandLineApp):
                    tobam_stdin = calmd_stdin
                    tobam_IOargs = '-bhS'
                 tobam_par1 = subprocess.Popen([self.options.samtools_path, 'view',
-                   tobam_IOargs, '-q', self.options.mapq_filter, '-o', par1_bam],
-                   stdin=tobam_stdin, stderr=open(tobam_par1_stderr, 'w'))
+                   tobam_IOargs, '-q', str(self.options.mapq_filter), '-o', par1_bam, '-'],
+                   stdin=tobam_stdin, stderr=tobam_par1_stderr)
                 #Make sure that SIGPIPE is properly handled:
                 bwasw_par1.stdout.close()
                 if self.options.max_mapped_reads > 0:
@@ -836,23 +837,23 @@ class ParseAndMap(CommandLineApp):
                    par1_exit_codes = [bwasw_par1.wait(), tobam_par1.wait()]
 
                 #Align to par2 ("sec"):
-                bwasw_par2_stderr = './{}/bwasw_{}_par2.stderr'.format(self.logdir, fastq_file_name)
-                tobam_par2_stderr = './{}/samtoolsViewToBAM_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                bwasw_par2_stderr = open('{}/bwasw_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
+                tobam_par2_stderr = open('{}/samtoolsViewToBAM_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
                 bwasw_par2 = subprocess.Popen(['bwa', 'bwasw',
-                   '-t', self.options.bwa_threads, parent2, fastq_file],
-                   stdout=subprocess.PIPE, stderr=open(bwasw_par2_stderr, 'w'))
+                   '-t', str(self.options.bwa_threads), parent2, fastq_file],
+                   stdout=subprocess.PIPE, stderr=bwasw_par2_stderr)
                 if self.options.max_mapped_reads > 0:
-                   truncate_par2 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                   truncate_par2 = subprocess.Popen(['{}/truncate_SAM.awk'.format(os.path.dirname(__file__)),
                       '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
                       stdin=bwasw_par2.stdout, stdout=subprocess.PIPE)
                    calmd_stdin = truncate_par2.stdout
                 else:
                    calmd_stdin = bwasw_par2.stdout
                 if GEN_MD:
-                   calmd_par2_stderr = './{}/samtoolsCalmd_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                   calmd_par2_stderr = open('{}/samtoolsCalmd_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
                    calmd_par2 = subprocess.Popen([self.options.samtools_path, 'calmd',
                       '-uS', '-', parent2],
-                      stdin=calmd_stdin, stderr=open(calmd_par2_stderr, 'w'),
+                      stdin=calmd_stdin, stderr=calmd_par2_stderr,
                       stdout=subprocess.PIPE)
                    tobam_par2_stdin = calmd_par2.stdout
                    tobam_IOargs = '-bh'
@@ -860,8 +861,8 @@ class ParseAndMap(CommandLineApp):
                    tobam_par2_stdin = calmd_stdin
                    tobam_IOargs = '-bhS'
                 tobam_par2 = subprocess.Popen([self.options.samtools_path, 'view',
-                   tobam_IOargs, '-q', self.options.mapq_filter, '-o', par2_bam],
-                   stdin=tobam_par2_stdin, stderr=open(tobam_par2_stderr, 'w'))
+                   tobam_IOargs, '-q', str(self.options.mapq_filter), '-o', par2_bam, '-'],
+                   stdin=tobam_par2_stdin, stderr=tobam_par2_stderr)
                 #Make sure that SIGPIPE is properly handled:
                 bwasw_par2.stdout.close()
                 if self.options.max_mapped_reads > 0:
@@ -881,21 +882,21 @@ class ParseAndMap(CommandLineApp):
 
             elif self.options.bwa_alg == 'mem': #Added BWA-MEM support
                 #Align reads to par1 ("sim"):
-                mem_par1_stderr = './{}/aln_{}_par1.stderr'.format(self.logdir, fastq_file_name)
-                tobam_par1_stderr = './{}/samtoolsViewToBAM_{}_par1.stderr'.format(self.logdir, fastq_file_name)
+                mem_par1_stderr = open('{}/aln_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
+                tobam_par1_stderr = open('{}/samtoolsViewToBAM_{}_par1.stderr'.format(self.logdir, fastq_file_name), 'w')
                 mem_par1 = subprocess.Popen(['bwa', 'mem',
-                   '-t', self.options.bwa_threads, parent1, fastq_file],
-                   stdout=subprocess.PIPE, stderr=open(mem_par1_stderr, 'w'))
+                   '-t', str(self.options.bwa_threads), parent1, fastq_file],
+                   stdout=subprocess.PIPE, stderr=mem_par1_stderr)
                 if self.options.max_mapped_reads > 0:
-                   truncate_par1 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                   truncate_par1 = subprocess.Popen(['{}/truncate_SAM.awk'.format(os.path.dirname(__file__)),
                       '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
                       stdin=mem_par1.stdout, stdout=subprocess.PIPE)
                    tobam_stdin = truncate_par1.stdout
                 else:
                    tobam_stdin = mem_par1.stdout
                 tobam_par1 = subprocess.Popen([self.options.samtools_path, 'view',
-                   '-bhS', '-q', self.options.mapq_filter, '-o', par1_bam],
-                   stdin=tobam_stdin, stderr=open(tobam_par1_stderr, 'w'))
+                   '-bhS', '-q', str(self.options.mapq_filter), '-o', par1_bam, '-'],
+                   stdin=tobam_stdin, stderr=tobam_par1_stderr)
                 #Make sure that SIGPIPE is properly handled:
                 mem_par1.stdout.close()
                 if self.options.max_mapped_reads > 0:
@@ -908,21 +909,21 @@ class ParseAndMap(CommandLineApp):
                    par1_exit_codes = [mem_par1.wait(), tobam_par1.wait()]
 
                 #Align reads to par2 ("sec"):
-                mem_par2_stderr = './{}/aln_{}_par2.stderr'.format(self.logdir, fastq_file_name)
-                tobam_par2_stderr = './{}/samtoolsViewToBAM_{}_par2.stderr'.format(self.logdir, fastq_file_name)
+                mem_par2_stderr = open('{}/aln_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
+                tobam_par2_stderr = open('{}/samtoolsViewToBAM_{}_par2.stderr'.format(self.logdir, fastq_file_name), 'w')
                 mem_par2 = subprocess.Popen(['bwa', 'mem',
-                   '-t', self.options.bwa_threads, parent2, fastq_file],
-                   stdout=subprocess.PIPE, stderr=open(mem_par2_stderr, 'w'))
+                   '-t', str(self.options.bwa_threads), parent2, fastq_file],
+                   stdout=subprocess.PIPE, stderr=mem_par2_stderr)
                 if self.options.max_mapped_reads > 0:
-                   truncate_par2 = subprocess.Popen([os.path.dirname(__file__), 'truncate_SAM.awk',
+                   truncate_par2 = subprocess.Popen(['{}/truncate_SAM.awk'.format(os.path.dirname(__file__)),
                       '-v', 'maxreads={}'.format(self.options.max_mapped_reads)],
                       stdin=mem_par2.stdout, stdout=subprocess.PIPE)
                    tobam_stdin = truncate_par2.stdout
                 else:
                    tobam_stdin = mem_par2.stdout
                 tobam_par2 = subprocess.Popen([self.options.samtools_path, 'view',
-                   '-bhS', '-q', self.options.mapq_filter, '-o', par2_bam],
-                   stdin=tobam_stdin, stderr=open(tobam_par2_stderr, 'w'))
+                   '-bhS', '-q', str(self.options.mapq_filter), '-o', par2_bam, '-'],
+                   stdin=tobam_stdin, stderr=tobam_par2_stderr)
                 #Make sure that SIGPIPE is properly handled:
                 mem_par2.stdout.close()
                 if self.options.max_mapped_reads > 0:
