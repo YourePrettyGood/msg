@@ -451,7 +451,9 @@ if ($parse_or_map eq '--map-only') {
    #Set autoflush to 1 to mitigate some concurrency issues:
    $| = 1;
    #Set up the FIFO with the appropriate number of tokens:
-   my $FIFO_path = ".msg.parent1or2-hmm.fifo";
+   #The FIFO filename needs to be process-specific to avoid collisions
+   # between concurrent calls to msg.pl (e.g. during cluster submission).
+   my $FIFO_path = ".msg$$.parent1or2-hmm.fifo";
    unlink($FIFO_path) if -p $FIFO_path; #Delete old FIFO if exists
    system("mkfifo", $FIFO_path) == 0 or die "Failed to create FIFO ${FIFO_path} for parallelizing parent1or2-hmm.sh calls: Exit code $?";
    #Initialize the FIFO with $n_parallel number of tokens:
@@ -573,4 +575,6 @@ if ($parse_or_map eq '--map-only') {
    close($fifo_fh);
    #Reset autoflush:
    $| = 0;
+   #Delete the FIFO once done:
+   unlink($FIFO_path);
 }
